@@ -45,11 +45,11 @@ let snapshot: AppSnapshot = {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1120,
-    height: 720,
-    minWidth: 960,
+    width: 1180,
+    height: 760,
+    minWidth: 900,
     minHeight: 620,
-    backgroundColor: "#F7F7F2",
+    backgroundColor: "#070A10",
     icon: app.isPackaged
       ? path.join(process.resourcesPath, "icon.ico")
       : path.join(__dirname, "../../../resources/icon.ico"),
