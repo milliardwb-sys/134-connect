@@ -80,7 +80,7 @@
       }
     ],
     "directories": {
-      "output": "D:/Projects/134-connect-artifacts"
+      "output": "release"
     },
     "win": {
       "icon": "resources/icon.ico",

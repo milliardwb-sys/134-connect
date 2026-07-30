@@ -3,7 +3,6 @@ dist/
 release/
 coverage/
 output/
-.github/workflows/
 AGENTS.md
 findings.md
 progress.md
