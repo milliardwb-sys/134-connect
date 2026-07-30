@@ -16,3 +16,5 @@ progress.md
 *.mobileprovision
 resources/bin/
 resources/xray/
+resources/tun2socks/
+resources/tun2proxy/
