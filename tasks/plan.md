@@ -27,13 +27,13 @@ Status: completed
 
 ## Phase 4 — Tunnel runtime
 
-Status: in_progress
+Status: implementation_complete
 
 - [x] Add a checksum-pinned Xray runtime.
 - [x] Fetch server-owned runtime configuration only in Electron main.
-- [ ] Add the Windows TUN routing layer.
-- Implement connect, disconnect, crash cleanup, and status reporting.
-- Verify networking recovery after forced termination.
+- [x] Add the Windows TUN routing layer with tun2proxy.
+- [x] Implement connect, disconnect, parent-process cleanup, and status reporting.
+- [ ] Verify networking recovery after forced termination on a clean Windows machine.
 
 ## Phase 5 — Packaging and release
 
@@ -41,7 +41,8 @@ Status: in_progress
 
 - [x] Create Windows NSIS packaging.
 - [x] Add GitHub Actions checks and verified runtime download.
-- Publish an unsigned preview clearly marked as a test build.
+- [x] Produce an unsigned preview clearly marked as a test build.
+- Publish the verified preview from the public repository.
 - Add code signing before the stable public release.
 
 ## Phase 6 — Production acceptance

@@ -33,10 +33,23 @@ export function App() {
       return;
     }
 
-    void window.connect134
+    let disposed = false;
+    const refresh = () =>
+      window.connect134
       .getSnapshot()
-      .then(setSnapshot)
-      .catch(() => setMessage("Не удалось запустить защищённый модуль."));
+      .then((nextSnapshot) => {
+        if (!disposed) setSnapshot(nextSnapshot);
+      });
+    void refresh().catch(() =>
+      setMessage("Не удалось запустить защищённый модуль."),
+    );
+    const interval = window.setInterval(() => {
+      void refresh().catch(() => undefined);
+    }, 2_000);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+    };
   }, []);
 
   const statusLabel = useMemo(() => {
