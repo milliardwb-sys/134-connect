@@ -1,6 +1,6 @@
 {
   "name": "134-connect",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Open-source desktop client for the 134 VPN service",
   "main": "dist/electron/main/main.js",
@@ -14,7 +14,7 @@
     "build:electron": "tsc -p tsconfig.electron.json && esbuild src/preload/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/electron/preload/preload.js",
     "build:renderer": "vite build",
     "build": "npm run build:electron && npm run build:renderer",
-    "core:fetch": "node scripts/fetch-xray.mjs",
+    "core:fetch": "node scripts/fetch-xray.mjs && node scripts/fetch-tun2proxy.mjs",
     "package:windows": "npm run build && electron-builder --win nsis",
     "package:dir": "npm run build && electron-builder --dir"
   },
@@ -42,6 +42,9 @@
     "vitest": "4.1.10",
     "wait-on": "9.0.4"
   },
+  "overrides": {
+    "js-yaml": "4.3.1"
+  },
   "build": {
     "appId": "ru.134.connect",
     "productName": "134 Connect",
@@ -68,10 +71,19 @@
           "LICENSE",
           "LICENSE-wintun.txt"
         ]
+      },
+      {
+        "from": "resources/tun2proxy",
+        "to": "tun2proxy",
+        "filter": [
+          "tun2proxy-bin.exe",
+          "wintun.dll",
+          "LICENSE"
+        ]
       }
     ],
     "directories": {
-      "output": "D:/Projects/134-connect-artifacts"
+      "output": "release"
     },
     "win": {
       "icon": "resources/icon.ico",
@@ -87,6 +99,7 @@
       "artifactName": "134-Connect-${version}-${arch}.${ext}"
     },
     "nsis": {
+      "perMachine": true,
       "installerIcon": "resources/icon.ico",
       "uninstallerIcon": "resources/icon.ico",
       "oneClick": false,

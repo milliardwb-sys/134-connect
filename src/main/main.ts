@@ -19,11 +19,22 @@ import { getOrCreateDeviceIdentity } from "./device-identity";
 import { PairingClient } from "./pairing-client";
 import { SecureSessionStore } from "./secure-session-store";
 import { DeviceConfigurationClient } from "./device-configuration-client";
+import { SubscriptionClient } from "./subscription-client";
+import {
+  buildXrayConfiguration,
+  parseSubscription,
+} from "./subscription-parser";
+import { XrayConfigurationValidator } from "./xray-configuration-validator";
+import { ElevatedTunnelCoordinator } from "./elevated-tunnel-coordinator";
+import { parseTunnelHelperArguments } from "./tunnel-helper-protocol";
+import { runElevatedTunnelHelper } from "./elevated-tunnel-helper";
 
 const API_URL = "https://app.134134.ru";
 const SITE_URL = "https://134134.ru";
 let mainWindow: BrowserWindow | null = null;
 let pendingPollSecret: string | null = null;
+let tunnelCoordinator: ElevatedTunnelCoordinator | null = null;
+let quitAfterTunnelStop = false;
 let snapshot: AppSnapshot = {
   version: app.getVersion(),
   platform: process.platform as AppSnapshot["platform"],
@@ -34,11 +45,11 @@ let snapshot: AppSnapshot = {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1120,
-    height: 720,
-    minWidth: 960,
+    width: 1180,
+    height: 760,
+    minWidth: 900,
     minHeight: 620,
-    backgroundColor: "#F7F7F2",
+    backgroundColor: "#070A10",
     icon: app.isPackaged
       ? path.join(process.resourcesPath, "icon.ico")
       : path.join(__dirname, "../../../resources/icon.ico"),
@@ -86,7 +97,18 @@ async function restoreSession(): Promise<void> {
 }
 
 function registerIpc(): void {
-  ipcMain.handle("app:get-snapshot", () => snapshot);
+  ipcMain.handle("app:get-snapshot", async () => {
+    if (tunnelCoordinator) {
+      await tunnelCoordinator.refresh();
+      if (snapshot.paired) {
+        snapshot = appSnapshotSchema.parse({
+          ...snapshot,
+          connectionStatus: tunnelCoordinator.status,
+        });
+      }
+    }
+    return snapshot;
+  });
 
   ipcMain.handle(
     "app:start-pairing",
@@ -179,15 +201,52 @@ function registerIpc(): void {
         };
       }
 
-      await new DeviceConfigurationClient(API_URL).get(
+      const configuration = await new DeviceConfigurationClient(API_URL).get(
         session.sessionToken,
       );
+      const subscription = await new SubscriptionClient().get(
+        configuration.subscriptionUrl,
+      );
+      const profile = parseSubscription(subscription);
+      const xrayConfiguration = buildXrayConfiguration(profile);
+      const xrayExecutable = app.isPackaged
+        ? path.join(process.resourcesPath, "xray", "xray.exe")
+        : path.join(
+            __dirname,
+            "../../../resources/xray/xray.exe",
+          );
+      await new XrayConfigurationValidator().validate(
+        xrayExecutable,
+        path.join(app.getPath("userData"), "runtime"),
+        xrayConfiguration,
+      );
+      snapshot = appSnapshotSchema.parse({
+        ...snapshot,
+        connectionStatus: "connecting",
+      });
+      tunnelCoordinator ??= new ElevatedTunnelCoordinator(
+        app.getPath("userData"),
+        process.execPath,
+        process.pid,
+        app.isPackaged,
+      );
+      await tunnelCoordinator.start(
+        profile.address,
+        xrayConfiguration,
+      );
+      snapshot = appSnapshotSchema.parse({
+        ...snapshot,
+        connectionStatus: "connected",
+      });
       return {
-        ok: false,
-        message:
-          "Конфигурация получена. Системный VPN-модуль ещё не активирован в этой preview-сборке.",
+        ok: true,
+        snapshot,
       };
     } catch (error) {
+      snapshot = appSnapshotSchema.parse({
+        ...snapshot,
+        connectionStatus: snapshot.paired ? "error" : "unpaired",
+      });
       return {
         ok: false,
         message:
@@ -198,26 +257,103 @@ function registerIpc(): void {
     }
   });
 
-  ipcMain.handle("app:disconnect", (): CommandResult => ({
-    ok: false,
-    message: "Активного VPN-соединения нет.",
-  }));
+  ipcMain.handle(
+    "app:disconnect",
+    async (): Promise<CommandResult> => {
+      try {
+        if (
+          !tunnelCoordinator ||
+          tunnelCoordinator.status === "disconnected"
+        ) {
+          return {
+            ok: false,
+            message: "Активного VPN-соединения нет.",
+          };
+        }
+        snapshot = appSnapshotSchema.parse({
+          ...snapshot,
+          connectionStatus: "disconnecting",
+        });
+        await tunnelCoordinator.stop();
+        snapshot = appSnapshotSchema.parse({
+          ...snapshot,
+          connectionStatus: "disconnected",
+        });
+        return { ok: true, snapshot };
+      } catch (error) {
+        snapshot = appSnapshotSchema.parse({
+          ...snapshot,
+          connectionStatus: "error",
+        });
+        return {
+          ok: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Не удалось отключить VPN.",
+        };
+      }
+    },
+  );
 
   ipcMain.handle("app:open-help", async (): Promise<void> => {
     await shell.openExternal(`${SITE_URL}/help`);
   });
 }
 
-app.whenReady().then(async () => {
-  await restoreSession();
-  registerIpc();
-  createWindow();
+const helperArguments = parseTunnelHelperArguments(process.argv);
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+if (helperArguments) {
+  app.whenReady().then(async () => {
+    let exitCode = 0;
+    try {
+      if (!app.isPackaged || process.platform !== "win32") {
+        throw new Error("Elevated helper is available only in Windows builds.");
+      }
+      await runElevatedTunnelHelper({
+        runtimeRoot: path.join(app.getPath("userData"), "runtime"),
+        requestPath: helperArguments.requestPath,
+        requestSha256: helperArguments.requestSha256,
+        resourcesPath: process.resourcesPath,
+        programDataPath:
+          process.env.ProgramData ?? "C:\\ProgramData",
+      });
+    } catch {
+      exitCode = 1;
+    } finally {
+      app.exit(exitCode);
+    }
   });
-});
+} else {
+  app.whenReady().then(async () => {
+    await restoreSession();
+    registerIpc();
+    createWindow();
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
-});
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+
+  app.on("before-quit", (event) => {
+    if (
+      quitAfterTunnelStop ||
+      !tunnelCoordinator ||
+      tunnelCoordinator.status === "disconnected"
+    ) {
+      return;
+    }
+    event.preventDefault();
+    void tunnelCoordinator
+      .stop()
+      .catch(() => undefined)
+      .finally(() => {
+        quitAfterTunnelStop = true;
+        app.quit();
+      });
+  });
+
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") app.quit();
+  });
+}

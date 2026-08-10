@@ -1,0 +1,37 @@
+name: Windows preview
+
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:run -- --maxWorkers=1
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run core:fetch
+      - run: npm run package:windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 134-connect-windows
+          path: release/*.exe
+          if-no-files-found: error
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: release/*.exe
+          generate_release_notes: true

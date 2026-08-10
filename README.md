@@ -15,19 +15,22 @@ Windows 10/11 x64. Preview packages must not be treated as stable releases.
 
 ## Status
 
-Preview status:
+Windows preview status:
 
 - Telegram device pairing and encrypted Windows credential storage are implemented;
 - the production service can authorize a device and return its active Remnawave subscription to the Electron main process;
 - the renderer never receives the session token or subscription URL;
-- the pinned Xray-core runtime is verified and packaged;
-- the full Windows TUN routing layer is not implemented yet, so this repository must not be advertised as a production-ready system-wide VPN client.
+- pinned Xray-core and tun2proxy runtimes are checksum-verified and packaged;
+- an elevated helper starts the system-wide Windows TUN tunnel, monitors it,
+  and removes routes before Xray is stopped;
+- the current package is unsigned and still requires real-device acceptance
+  testing, so it must remain clearly identified as a preview build.
 
 See
 [`docs/spec.md`](docs/spec.md) and [`tasks/plan.md`](tasks/plan.md).
 
 ## Licensing
 
-134 Connect application code is MIT licensed. Xray-core is a separate
-third-party component licensed under MPL-2.0. See
+134 Connect application code is MIT licensed. Xray-core and tun2proxy are
+separate third-party runtime components under MPL-2.0 and MIT respectively. See
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

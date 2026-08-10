@@ -4,6 +4,8 @@ import type {
   AppSnapshot,
   CommandResult,
 } from "../shared/ipc-contracts";
+import brandHero from "./assets/brand-hero.png";
+import brandSplash from "./assets/brand-splash.png";
 
 const browserPreview: AppSnapshot = {
   version: "preview",
@@ -11,6 +13,17 @@ const browserPreview: AppSnapshot = {
   paired: false,
   account: null,
   connectionStatus: "unpaired",
+};
+
+const browserPairedPreview: AppSnapshot = {
+  version: "preview",
+  platform: "win32",
+  paired: true,
+  account: {
+    accountLabel: "@user134",
+    expiresAt: "2027-07-30T00:00:00.000Z",
+  },
+  connectionStatus: "disconnected",
 };
 
 function formatExpiry(value: string): string {
@@ -29,14 +42,31 @@ export function App() {
 
   useEffect(() => {
     if (!window.connect134 && import.meta.env.DEV) {
-      setSnapshot(browserPreview);
+      setSnapshot(
+        new URLSearchParams(window.location.search).get("preview") === "paired"
+          ? browserPairedPreview
+          : browserPreview,
+      );
       return;
     }
 
-    void window.connect134
+    let disposed = false;
+    const refresh = () =>
+      window.connect134
       .getSnapshot()
-      .then(setSnapshot)
-      .catch(() => setMessage("Не удалось запустить защищённый модуль."));
+      .then((nextSnapshot) => {
+        if (!disposed) setSnapshot(nextSnapshot);
+      });
+    void refresh().catch(() =>
+      setMessage("Не удалось запустить защищённый модуль."),
+    );
+    const interval = window.setInterval(() => {
+      void refresh().catch(() => undefined);
+    }, 2_000);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+    };
   }, []);
 
   const statusLabel = useMemo(() => {
@@ -68,6 +98,10 @@ export function App() {
     setBusy(true);
     setMessage(null);
     try {
+      if (!window.connect134 && import.meta.env.DEV) {
+        setLoginCode("134-482");
+        return;
+      }
       const result = await window.connect134.startPairing();
       if (result.ok) setLoginCode(result.loginCode);
       else setMessage(result.message);
@@ -78,53 +112,89 @@ export function App() {
 
   if (!snapshot) {
     return (
-      <main className="shell shell--loading">
-        <div className="loading-mark">134</div>
-        <p>{message ?? "Готовим защищённое подключение…"}</p>
+      <main className="loading-scene">
+        <img src={brandSplash} alt="" />
+        <div className="loading-content">
+          <div className="loading-wordmark">134</div>
+          <p>PRIVATE NETWORK · WINDOWS</p>
+          <strong>{message ?? "Запускаем защищённую сеть"}</strong>
+        </div>
       </main>
     );
   }
 
+  const isConnected = snapshot.connectionStatus === "connected";
+  const connectionIsChanging =
+    snapshot.connectionStatus === "connecting" ||
+    snapshot.connectionStatus === "disconnecting";
+
   return (
-    <main className="shell">
+    <main className={`shell state--${snapshot.connectionStatus}`}>
       <header className="topbar">
         <div className="wordmark" aria-label="134 Connect">
           <span>134</span>
           <small>CONNECT</small>
         </div>
+        <div className="topbar-meta">
+          <span>WINDOWS</span>
+          <span className="topbar-divider" aria-hidden="true" />
+          <span>{snapshot.paired ? statusLabel : "АКТИВАЦИЯ"}</span>
+        </div>
         <button
           className="text-button"
           type="button"
-          onClick={() => void window.connect134.openHelp()}
+          onClick={() => {
+            if (window.connect134) void window.connect134.openHelp();
+          }}
         >
           Помощь
         </button>
       </header>
 
       <section className="workspace">
-        <div className="signal-stage" aria-hidden="true">
-          <div className="rays" />
-          <div className="signal-number">134</div>
-        </div>
+        <aside className="brand-stage">
+          <img
+            className="brand-image"
+            src={brandHero}
+            alt="134 — защищённый интернет в городе и в поездках"
+          />
+          <div className="brand-shade" aria-hidden="true" />
+          <div className="brand-caption">
+            <span>134</span>
+            <p>Интернет<br />на твоих условиях</p>
+          </div>
+        </aside>
 
         <div className="control-panel">
-          <p className="eyebrow">PRIVATE NETWORK · WINDOWS</p>
-          <h1>{snapshot.paired ? statusLabel : "Подключите аккаунт"}</h1>
+          <div className="status-line" aria-live="polite">
+            <span className="status-dot" aria-hidden="true" />
+            <strong>{statusLabel}</strong>
+          </div>
+          <p className="eyebrow">134 PRIVATE NETWORK</p>
+          <h1>
+            {snapshot.paired
+              ? isConnected
+                ? "Свободно. Защищено."
+                : "Открой свой интернет."
+              : "Один код. И вы в сети."}
+          </h1>
           <p className="lead">
             {snapshot.paired
-              ? "Один клик — и интернет работает через защищённую сеть 134."
-              : "Получите одноразовый код в Telegram и введите его здесь. Ссылки и ключи останутся скрыты."}
+              ? isConnected
+                ? "Ваш трафик проходит через защищённую сеть 134. Можно работать, смотреть и общаться."
+                : "Подключите защищённую сеть 134 одним нажатием. Никаких ключей, сложных настроек и лишних окон."
+              : "Свяжите приложение с Telegram — подписка и ваши устройства появятся здесь автоматически."}
           </p>
 
           {snapshot.paired && snapshot.account ? (
             <>
               <button
-                className="power-button"
-                disabled={busy}
+                className={`connect-button ${isConnected ? "connect-button--active" : ""}`}
+                disabled={busy || connectionIsChanging}
                 type="button"
                 onClick={() =>
                   void apply(
-                    snapshot.connectionStatus === "connected"
+                    isConnected
                       ? window.connect134.disconnect()
                       : window.connect134.connect(),
                   )
@@ -135,15 +205,23 @@ export function App() {
                     : "Подключить VPN"
                 }
               >
-                <span className="power-icon" />
+                <span>{isConnected ? "Отключить VPN" : "Подключить VPN"}</span>
+                <strong aria-hidden="true">{isConnected ? "OFF" : "ON"}</strong>
               </button>
+              <p className="connection-note">
+                {connectionIsChanging
+                  ? statusLabel
+                  : isConnected
+                    ? "Защищённое соединение активно"
+                    : "Готово к подключению"}
+              </p>
               <div className="account-card">
                 <div>
-                  <span>Аккаунт</span>
+                  <span>ПРОФИЛЬ</span>
                   <strong>{snapshot.account.accountLabel}</strong>
                 </div>
                 <div>
-                  <span>Подписка до</span>
+                  <span>ПОДПИСКА ДО</span>
                   <strong>{formatExpiry(snapshot.account.expiresAt)}</strong>
                 </div>
               </div>
@@ -152,13 +230,28 @@ export function App() {
             <div className="pairing-form">
               {loginCode ? (
                 <div className="login-code" aria-live="polite">
-                  <span>Отправьте боту команду</span>
-                  <strong>/login {loginCode}</strong>
+                  <span>КОМАНДА ДЛЯ TELEGRAM</span>
+                  <strong>
+                    /login <b>{loginCode}</b>
+                  </strong>
+                  <p>Скопируйте команду и отправьте её боту 134.</p>
                 </div>
               ) : (
-                <div className="pairing-intro">
-                  <span>Без пароля</span>
-                  <strong>Подтверждение займёт меньше минуты</strong>
+                <div className="pairing-steps">
+                  <div>
+                    <span>01</span>
+                    <p>
+                      <strong>Получите код</strong>
+                      <small>Он действует 10 минут</small>
+                    </p>
+                  </div>
+                  <div>
+                    <span>02</span>
+                    <p>
+                      <strong>Подтвердите в Telegram</strong>
+                      <small>Без логина и пароля</small>
+                    </p>
+                  </div>
                 </div>
               )}
               <button
@@ -174,11 +267,11 @@ export function App() {
                 {busy
                   ? "Проверяем…"
                   : loginCode
-                    ? "Я подтвердил в Telegram"
-                    : "Получить код входа"}
+                    ? "Проверить подключение"
+                    : "Получить код"}
               </button>
               <p className="form-hint">
-                Код действует 10 минут и используется только один раз.
+                134 не показывает и не хранит ваш пароль Telegram.
               </p>
             </div>
           )}
@@ -193,8 +286,9 @@ export function App() {
       </section>
 
       <footer>
-        <span>134134.ru</span>
-        <span>Версия {snapshot.version} · до 5 устройств</span>
+        <span>134134.RU</span>
+        <span>Версия {snapshot.version}</span>
+        <span>ДО 5 УСТРОЙСТВ</span>
       </footer>
     </main>
   );
