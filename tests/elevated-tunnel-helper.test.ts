@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildTun2proxyArguments,
   loadTunnelLaunchRequest,
+  shouldPersistTunnelErrorState,
 } from "../src/main/elevated-tunnel-helper";
 
 const launchRequest = {
@@ -104,5 +105,15 @@ describe("elevated tunnel helper boundaries", () => {
       "--verbosity",
       "warn",
     ]);
+  });
+
+  it("persists an error after the launch request and state path are known", () => {
+    expect(
+      shouldPersistTunnelErrorState(launchRequest, "C:\\runtime\\state.json"),
+    ).toBe(true);
+    expect(shouldPersistTunnelErrorState(null, "C:\\runtime\\state.json")).toBe(
+      false,
+    );
+    expect(shouldPersistTunnelErrorState(launchRequest, null)).toBe(false);
   });
 });

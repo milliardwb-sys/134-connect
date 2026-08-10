@@ -1,6 +1,6 @@
 {
   "name": "134-connect",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Open-source desktop client for the 134 VPN service",
   "main": "dist/electron/main/main.js",
@@ -41,6 +41,9 @@
     "vite": "7.3.1",
     "vitest": "4.1.10",
     "wait-on": "9.0.4"
+  },
+  "overrides": {
+    "js-yaml": "4.3.1"
   },
   "build": {
     "appId": "ru.134.connect",

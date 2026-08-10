@@ -93,6 +93,13 @@ export type ElevatedTunnelHelperOptions = {
   programDataPath: string;
 };
 
+export function shouldPersistTunnelErrorState(
+  request: TunnelLaunchRequest | null,
+  statePath: string | null,
+): boolean {
+  return request !== null && statePath !== null;
+}
+
 export async function runElevatedTunnelHelper(
   options: ElevatedTunnelHelperOptions,
 ): Promise<void> {
@@ -101,7 +108,6 @@ export async function runElevatedTunnelHelper(
   let tun2proxy: ChildProcess | null = null;
   let statePath: string | null = null;
   let protectedRuntimeDirectory: string | null = null;
-  let failed = false;
 
   try {
     request = await loadTunnelLaunchRequest(options);
@@ -194,11 +200,10 @@ export async function runElevatedTunnelHelper(
     }
     await writeState(statePath, request.nonce, "stopping");
   } catch (error) {
-    failed = true;
-    if (!failed && request && statePath) {
+    if (shouldPersistTunnelErrorState(request, statePath)) {
       await writeState(
-        statePath,
-        request.nonce,
+        statePath!,
+        request!.nonce,
         "error",
         safeErrorMessage(error),
       ).catch(() => undefined);
